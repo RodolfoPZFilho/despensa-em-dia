@@ -6,6 +6,7 @@ export const LOCAIS = ['Geladeira', 'Freezer', 'Armário'] as const;
 export const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'pct'] as const;
 
 export type StatusItem = 'ativo' | 'consumido' | 'descartado';
+export type OrigemValidade = 'manual' | 'ocr';
 
 export interface Item {
   id: string;
@@ -17,13 +18,16 @@ export interface Item {
   validade: string;
   status: StatusItem;
   observacao: string | null;
+  codigo_barras: string | null;    // visão computacional: código de barras lido pela câmera
+  validade_origem: OrigemValidade; // visão computacional: 'ocr' quando a data veio da foto
+  texto_ocr: string | null;        // visão computacional: texto bruto lido na embalagem
   criado_em: string;
   atualizado_em: string;
   excluido: number;
   sincronizado: number;
 }
 
-export type ItemEntrada = Pick<Item, 'nome' | 'categoria' | 'quantidade' | 'unidade' | 'local' | 'validade' | 'observacao'>;
+export type ItemEntrada = Pick<Item, 'nome' | 'categoria' | 'quantidade' | 'unidade' | 'local' | 'validade' | 'observacao' | 'codigo_barras' | 'validade_origem' | 'texto_ocr'>;
 
 export type FiltroLista = 'todos' | 'vencendo' | 'vencidos';
 
@@ -54,9 +58,11 @@ export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
   const id = Crypto.randomUUID();
   const t = agora();
   await db.runAsync(
-    `INSERT INTO itens (id, nome, categoria, quantidade, unidade, local, validade, status, observacao, criado_em, atualizado_em, excluido, sincronizado)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', ?, ?, ?, 0, 0)`,
-    [id, e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null, t, t],
+    `INSERT INTO itens (id, nome, categoria, quantidade, unidade, local, validade, status, observacao,
+                        codigo_barras, validade_origem, texto_ocr, criado_em, atualizado_em, excluido, sincronizado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', ?, ?, ?, ?, ?, ?, 0, 0)`,
+    [id, e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null,
+     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, t, t],
   );
   return id;
 }
@@ -64,8 +70,9 @@ export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
 export async function atualizarItem(db: SQLiteDatabase, id: string, e: ItemEntrada) {
   await db.runAsync(
     `UPDATE itens SET nome = ?, categoria = ?, quantidade = ?, unidade = ?, local = ?, validade = ?, observacao = ?,
-       atualizado_em = ?, sincronizado = 0 WHERE id = ?`,
-    [e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null, agora(), id],
+       codigo_barras = ?, validade_origem = ?, texto_ocr = ?, atualizado_em = ?, sincronizado = 0 WHERE id = ?`,
+    [e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null,
+     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, agora(), id],
   );
 }
 
@@ -84,6 +91,8 @@ export interface Resumo {
   vencendo: number;
   consumidos: number;
   descartados: number;
+  comCodigo: number;    // itens cadastrados lendo o código de barras
+  validadeOcr: number;  // itens cuja validade foi lida pela câmera (OCR)
   porLocal: { local: string; total: number }[];
 }
 
@@ -94,7 +103,9 @@ export async function obterResumo(db: SQLiteDatabase, hoje: string, limite: stri
        SUM(CASE WHEN status = 'ativo' AND validade < ? THEN 1 ELSE 0 END) AS vencidos,
        SUM(CASE WHEN status = 'ativo' AND validade >= ? AND validade <= ? THEN 1 ELSE 0 END) AS vencendo,
        SUM(CASE WHEN status = 'consumido' THEN 1 ELSE 0 END) AS consumidos,
-       SUM(CASE WHEN status = 'descartado' THEN 1 ELSE 0 END) AS descartados
+       SUM(CASE WHEN status = 'descartado' THEN 1 ELSE 0 END) AS descartados,
+       SUM(CASE WHEN codigo_barras IS NOT NULL THEN 1 ELSE 0 END) AS comCodigo,
+       SUM(CASE WHEN validade_origem = 'ocr' THEN 1 ELSE 0 END) AS validadeOcr
      FROM itens WHERE excluido = 0`,
     [hoje, hoje, limite],
   );
@@ -107,6 +118,8 @@ export async function obterResumo(db: SQLiteDatabase, hoje: string, limite: stri
     vencendo: r?.vencendo ?? 0,
     consumidos: r?.consumidos ?? 0,
     descartados: r?.descartados ?? 0,
+    comCodigo: r?.comCodigo ?? 0,
+    validadeOcr: r?.validadeOcr ?? 0,
     porLocal,
   };
 }

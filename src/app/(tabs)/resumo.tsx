@@ -64,6 +64,20 @@ export default function ResumoScreen() {
         )}
       </View>
 
+      {(r.comCodigo > 0 || r.validadeOcr > 0) && (
+        <View style={s.bloco}>
+          <Text style={s.titulo}>Cadastro pela câmera</Text>
+          <View style={s.linhaLocal}>
+            <Text style={s.textoLocal}>Lidos pelo código de barras</Text>
+            <Text style={s.textoLocal}>{r.comCodigo}</Text>
+          </View>
+          <View style={s.linhaLocal}>
+            <Text style={s.textoLocal}>Validade lida na embalagem (OCR)</Text>
+            <Text style={s.textoLocal}>{r.validadeOcr}</Text>
+          </View>
+        </View>
+      )}
+
       {r.porLocal.length > 0 && (
         <View style={s.bloco}>
           <Text style={s.titulo}>Por local</Text>

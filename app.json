@@ -30,7 +30,15 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O Despensa em Dia usa a câmera para ler o código de barras e a data de validade das embalagens.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "scheme": "despensaemdia",
     "experiments": {

@@ -12,6 +12,9 @@ create table if not exists public.itens (
   validade       date not null,
   status         text not null default 'ativo' check (status in ('ativo', 'consumido', 'descartado')),
   observacao     text,
+  codigo_barras  text check (codigo_barras is null or codigo_barras ~ '^[0-9]{6,14}$'), -- visão computacional: código lido pela câmera
+  validade_origem text not null default 'manual' check (validade_origem in ('manual', 'ocr')), -- 'ocr' = data lida na foto
+  texto_ocr      text,                                   -- visão computacional: texto lido na embalagem
   criado_em      timestamptz not null default now(),
   atualizado_em  timestamptz not null default now(),     -- usado na sincronização incremental
   excluido       boolean not null default false          -- exclusão lógica vinda do app
@@ -19,6 +22,7 @@ create table if not exists public.itens (
 
 create index if not exists itens_user_atualizado_idx on public.itens (user_id, atualizado_em);
 create index if not exists itens_user_validade_idx  on public.itens (user_id, validade) where not excluido;
+create index if not exists itens_user_codigo_idx    on public.itens (user_id, codigo_barras) where codigo_barras is not null;
 
 -- Segurança: cada usuário só enxerga e altera os próprios alimentos (Row Level Security)
 alter table public.itens enable row level security;

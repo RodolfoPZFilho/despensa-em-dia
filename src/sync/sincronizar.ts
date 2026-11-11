@@ -14,6 +14,9 @@ interface ItemRemoto {
   validade: string;
   status: string;
   observacao: string | null;
+  codigo_barras: string | null;
+  validade_origem: string;
+  texto_ocr: string | null;
   criado_em: string;
   atualizado_em: string;
   excluido: boolean;
@@ -59,10 +62,11 @@ async function baixar(db: SQLiteDatabase, userId: string) {
         if (local && Date.parse(local.atualizado_em) >= Date.parse(remotoEm)) continue; // local é igual ou mais novo
         await db.runAsync(
           `INSERT OR REPLACE INTO itens
-             (id, nome, categoria, quantidade, unidade, local, validade, status, observacao, criado_em, atualizado_em, excluido, sincronizado)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+             (id, nome, categoria, quantidade, unidade, local, validade, status, observacao,
+              codigo_barras, validade_origem, texto_ocr, criado_em, atualizado_em, excluido, sincronizado)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
           [r.id, r.nome, r.categoria, Number(r.quantidade), r.unidade, r.local, r.validade, r.status, r.observacao,
-           iso(r.criado_em), remotoEm, r.excluido ? 1 : 0],
+           r.codigo_barras ?? null, r.validade_origem ?? 'manual', r.texto_ocr ?? null, iso(r.criado_em), remotoEm, r.excluido ? 1 : 0],
         );
         total++;
       }
@@ -94,6 +98,9 @@ async function enviar(db: SQLiteDatabase, userId: string) {
       validade: p.validade,
       status: p.status,
       observacao: p.observacao,
+      codigo_barras: p.codigo_barras,
+      validade_origem: p.validade_origem,
+      texto_ocr: p.texto_ocr,
       criado_em: p.criado_em,
       atualizado_em: p.atualizado_em,
       excluido: p.excluido === 1,

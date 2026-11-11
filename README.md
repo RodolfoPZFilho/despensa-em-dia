@@ -21,15 +21,45 @@ de aproveitamento: quanto foi consumido e quanto foi jogado fora.
 | **Novo alimento** (modal) | Nome, data de validade (calendário + atalhos +3 dias, +1 semana…), quantidade/unidade, local (Geladeira, Freezer, Armário), categoria e observação |
 | **Detalhes** | Situação da validade, ações **Consumi** / **Joguei fora**, edição e exclusão |
 | **Resumo** (aba) | Totais (na despensa, vencendo, vencidos, consumidos), % de aproveitamento, "Use primeiro" e contagem por local |
+| **Detalhes** (aba) | Listas de a vencer, vencidos, consumidos e descartados |
 | **Conta** (aba) | Login/cadastro no Supabase, estado da sincronização, pendências, "Sincronizar agora" e sair |
+| **Login** | Entrada por e-mail ou nome de usuário (exigida quando o Supabase está configurado) |
 
-## 3. Tecnologias obrigatórias
+## 3. Visão computacional (2º bimestre)
+
+O maior atrito do app era **digitar** cada alimento e a validade. Isso fazia o usuário desistir de cadastrar, e um alimento
+que não está no app pode vencer esquecido. Agora a câmera faz esse trabalho em dois pontos do formulário **Novo alimento**:
+
+| Recurso | Técnica | O que acontece |
+|---|---|---|
+| **Código** (ícone ao lado do nome) | Detecção e decodificação de **código de barras** EAN-13/EAN-8/UPC em tempo real (`expo-camera`) | O número lido busca o produto **primeiro na própria despensa** (SQLite, funciona offline) e depois na base aberta **Open Food Facts**. Nome e categoria são preenchidos. Se o produto já foi cadastrado antes, também volta a unidade e o local usados da última vez. |
+| **Ler data** (ícone ao lado da validade) | **OCR**: foto da embalagem → texto (API OCR.space via **Supabase Edge Function**) → interpretação da data | O app recorta a faixa enquadrada, reduz a foto e envia à função `ocr-validade`. O texto devolvido passa por `extrairValidade()`, que reconhece formatos como `VAL 12/03/27`, `FAB 10.09.26 VAL 10.03.27`, `VENC 15 JAN 2027`, `03/2027` e `VAL 120327`, separa **fabricação × validade** pelas palavras próximas e sugere a validade. Quando há mais de uma data, todas aparecem como opções. |
+
+**Como os resultados são usados pelo sistema:**
+
+- Cada alimento guarda `codigo_barras`, `validade_origem` (`manual` ou `ocr`) e `texto_ocr` no **SQLite**, e esses campos
+  sobem para o **Supabase** pela mesma sincronização, associados ao usuário (RLS).
+- O código de barras vira uma **memória de produtos**: escanear de novo um item já cadastrado (até em outro aparelho, depois do
+  sync) preenche o formulário sem internet.
+- A data lida define a **validade**, e é ela que ordena a lista e gera os alertas de vencido/vencendo.
+- A tela do alimento mostra o que foi lido pela câmera, e o **Resumo** conta quantos itens foram cadastrados por código de barras
+  e por OCR.
+- Se o usuário corrigir a data à mão, `validade_origem` volta a ser `manual`. Isso permite medir a taxa de acerto do OCR.
+
+**Por que OCR em nuvem (Edge Function)?** Reconhecimento de texto no próprio aparelho (ML Kit) exige build nativo e não roda no
+Expo Go. A Edge Function mantém a chave da API **fora do app**, exige usuário logado (JWT) e funciona igual no celular e na web.
+
+Teste do interpretador de datas: `npm run test:ocr` (casos reais de embalagens).
+
+## 4. Tecnologias obrigatórias
 
 - **React Native + Expo (SDK 57)** com **Expo Router** para navegação (Stack + Tabs + modal)
 - **Expo SQLite**: banco local `despensa.db`; o app funciona 100% offline
 - **Supabase (PostgreSQL)**: tabela `public.itens`, com autenticação por e-mail e Row Level Security
+- **Visão computacional**: `expo-camera` (leitura de código de barras), OCR.space (reconhecimento de texto) chamado por uma
+  **Supabase Edge Function**, `expo-image-manipulator` (recorte/redução da foto) e Open Food Facts (dados do produto)
 
-## 4. Arquitetura: *local-first*
+## 5. Arquitetura: *local-first*
 
 ```
  Tela ──grava──► SQLite (despensa.db) ──sincronizado = 0──► fila de envio
@@ -53,20 +83,30 @@ de aproveitamento: quanto foi consumido e quanto foi jogado fora.
 src/
   app/                    # rotas (Expo Router)
     _layout.tsx           # SQLiteProvider + SyncProvider + Stack
-    (tabs)/_layout.tsx    # abas Despensa, Resumo, Conta
+    (tabs)/_layout.tsx    # abas Despensa, Resumo, Detalhes, Conta
     (tabs)/index.tsx      # lista da despensa
-    (tabs)/resumo.tsx     # indicadores
-    (tabs)/conta.tsx      # login e sincronização
+    (tabs)/resumo.tsx     # indicadores (inclui uso da câmera)
+    (tabs)/detalhes.tsx   # a vencer, vencidos, consumidos, descartados
+    (tabs)/conta.tsx      # conta e sincronização
+    login.tsx             # entrada por e-mail ou usuário
     item/novo.tsx         # cadastro (modal)
-    item/[id].tsx         # detalhes/edição
-  db/schema.ts            # criação/migração do SQLite (PRAGMA user_version)
+    item/[id].tsx         # detalhes/edição + o que foi lido pela câmera
+  db/schema.ts            # criação/migração do SQLite (PRAGMA user_version; v2 = colunas da visão)
   db/itens.ts             # consultas SQL (CRUD, resumo, fila)
   sync/sincronizar.ts     # pull/push com o Supabase
   sync/SyncContext.tsx    # sessão, estado online/offline, gatilhos de sync
   lib/supabase.ts         # cliente Supabase (sessão guardada via expo-sqlite/localStorage)
   lib/datas.ts            # cálculo de dias para vencer
+  lib/alertas.ts          # alert/confirm que funcionam também na web
+  lib/visao.ts            # OCR (Edge Function) e busca de produto por código de barras
+  lib/validadeOcr.ts      # interpreta o texto do OCR e encontra a validade
+  components/CameraVisao.tsx  # câmera: leitor de código de barras e foto da validade
   components/             # ItemCard, ItemForm, Chip, Botao, IndicadorSync
 supabase/schema.sql       # tabela, índices e políticas RLS do PostgreSQL
+supabase/usuarios.sql     # login por nome de usuário
+supabase/visao.sql        # migração do 2º bimestre (colunas da visão computacional)
+supabase/functions/ocr-validade/index.ts  # Edge Function de OCR
+scripts/testar-validade-ocr.mjs           # testes do interpretador de datas
 ```
 
 ### Modelo de dados
@@ -76,6 +116,9 @@ supabase/schema.sql       # tabela, índices e políticas RLS do PostgreSQL
 | id | TEXT (UUID) | uuid PK |
 | user_id | — | uuid → auth.users |
 | nome, categoria, unidade, local, observacao | TEXT | text |
+| codigo_barras | TEXT | text (6 a 14 dígitos) |
+| validade_origem | TEXT `manual`/`ocr` | text + check |
+| texto_ocr | TEXT | text |
 | quantidade | REAL | numeric(10,2) |
 | validade | TEXT `AAAA-MM-DD` | date |
 | status | TEXT (ativo, consumido, descartado) | text + check |
@@ -83,7 +126,7 @@ supabase/schema.sql       # tabela, índices e políticas RLS do PostgreSQL
 | excluido | INTEGER 0/1 | boolean |
 | sincronizado | INTEGER 0/1 (só local) | — |
 
-## 5. Como rodar
+## 6. Como rodar
 
 Pré-requisitos: **Node.js 20 LTS ou superior** e o app **Expo Go** no celular (Android ou iOS).
 
@@ -99,8 +142,14 @@ Sem o `.env` o app roda em **modo somente local** (apenas SQLite), o que é úti
 
 1. Crie um projeto em https://supabase.com.
 2. Em **SQL Editor**, execute `supabase/schema.sql` e depois `supabase/usuarios.sql` (login por e-mail ou nome de usuário).
+   **Projeto já criado no 1º bimestre:** execute também `supabase/visao.sql`. Sem essas colunas a sincronização falha.
 3. Em **Project Settings → API**, copie a *Project URL* e a *publishable key* para o `.env`.
-4. (Opcional, para testes) Em **Authentication → Sign In / Providers → Email**, desative *Confirm email* para entrar sem
+4. **Edge Function de OCR:** em **Edge Functions → Deploy a new function → Via Editor**, crie a função com o nome
+   `ocr-validade`, cole o conteúdo de `supabase/functions/ocr-validade/index.ts` e publique (deixe *Verify JWT* ligado).
+   Pela CLI: `npx supabase functions deploy ocr-validade --project-ref <ref>`.
+5. **Chave do OCR:** crie uma chave grátis em https://ocr.space/ocrapi e, em **Edge Functions → Secrets**, adicione
+   `OCR_SPACE_API_KEY`. Sem ela a função usa a chave de demonstração `helloworld`, que é muito limitada.
+6. (Opcional, para testes) Em **Authentication → Sign In / Providers → Email**, desative *Confirm email* para entrar sem
    confirmar o e-mail.
 
 ### Testar a sincronização (roteiro de apresentação)
@@ -111,18 +160,26 @@ Sem o `.env` o app roda em **modo somente local** (apenas SQLite), o que é úti
 4. Desligue o modo avião: o item é enviado sozinho.
 5. Edite um registro direto no Table Editor (atualize também `atualizado_em`) e puxe a lista: a mudança aparece no app.
 
-## 6. Próxima etapa (2º bimestre): visão computacional
+### Testar a visão computacional (roteiro de apresentação)
 
-- **Ler a data de validade pela câmera** (OCR com `expo-camera` e reconhecimento de texto) e preencher o campo
-  automaticamente.
-- Ler o **código de barras** para sugerir o nome do produto.
+1. **Novo alimento → Código:** aponte para o código de barras de um produto (ex.: leite condensado). Nome e categoria são
+   preenchidos pela Open Food Facts.
+2. **Ler data:** enquadre a validade impressa e tire a foto. A data aparece no campo com o aviso "lida da embalagem". Em
+   embalagens com fabricação e validade, as duas datas aparecem como opções.
+3. Salve e abra o alimento: o bloco **Lido pela câmera** mostra o código e o texto reconhecido.
+4. No Supabase (*Table Editor → itens*), confira `codigo_barras`, `validade_origem = ocr` e `texto_ocr`.
+5. Ative o modo avião e escaneie de novo o mesmo produto: ele é reconhecido pela despensa local, sem internet.
+6. Veja o bloco **Cadastro pela câmera** na aba Resumo.
+
+## 7. Próximos passos
+
 - Notificações locais quando algo estiver para vencer (`expo-notifications`).
+- OCR no próprio aparelho (ML Kit) num build de desenvolvimento, para ler a validade sem internet.
 
-O formulário (`ItemForm`) já recebe os dados por props, então a câmera só precisará preencher `nome` e `validade`.
+## 8. Versão web (para apresentação)
 
-## 7. Versão web (para apresentação)
-
-O mesmo código roda no navegador. O SQLite funciona via WebAssembly, e o Supabase continua sincronizando.
+O mesmo código roda no navegador. O SQLite funciona via WebAssembly, e o Supabase continua sincronizando. A câmera também
+funciona no navegador (webcam ou câmera do celular), mas exige **HTTPS**: o Netlify já é HTTPS, e `localhost` também é aceito.
 
 ```bash
 npx expo start --web              # testar no PC (abre em http://localhost:8081)

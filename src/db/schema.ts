@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const VERSAO_ATUAL = 1;
+const VERSAO_ATUAL = 2;
 
 /**
  * Cria/atualiza o banco local. Chamado pelo <SQLiteProvider onInit>.
@@ -42,7 +42,18 @@ export async function migrarBanco(db: SQLiteDatabase) {
     versao = 1;
   }
 
-  // Próximas migrações: if (versao === 1) { ...; versao = 2; }
+  // v2 (2º bimestre): resultados da visão computacional
+  if (versao === 1) {
+    await db.execAsync(`
+      ALTER TABLE itens ADD COLUMN codigo_barras TEXT;                          -- lido pela câmera (EAN/UPC)
+      ALTER TABLE itens ADD COLUMN validade_origem TEXT NOT NULL DEFAULT 'manual'; -- manual | ocr
+      ALTER TABLE itens ADD COLUMN texto_ocr TEXT;                              -- texto que o OCR leu na embalagem
+      CREATE INDEX IF NOT EXISTS idx_itens_codigo ON itens (codigo_barras);
+    `);
+    versao = 2;
+  }
+
+  // Próximas migrações: if (versao === 2) { ...; versao = 3; }
 
   await db.execAsync(`PRAGMA user_version = ${versao}`);
 }

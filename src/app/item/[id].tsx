@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { atualizarItem, buscarItem, excluirItem, mudarStatus, type Item, type StatusItem } from '@/db/itens';
@@ -58,6 +59,24 @@ export default function DetalheItemScreen() {
           <Botao titulo="Voltar para a despensa" icone="arrow-undo-outline" variante="secundario" onPress={() => finalizar('ativo')} />
         </View>
       )}
+      {(item.codigo_barras || item.validade_origem === 'ocr') && (
+        <View style={s.visao}>
+          <Text style={s.visaoTitulo}>Lido pela câmera</Text>
+          {item.codigo_barras && (
+            <View style={s.visaoLinha}>
+              <Ionicons name="barcode-outline" size={16} color={cores.primaria} />
+              <Text style={s.visaoTexto}>Código de barras {item.codigo_barras}</Text>
+            </View>
+          )}
+          {item.validade_origem === 'ocr' && (
+            <View style={s.visaoLinha}>
+              <Ionicons name="scan-outline" size={16} color={cores.primaria} />
+              <Text style={s.visaoTexto}>Validade reconhecida na embalagem (OCR)</Text>
+            </View>
+          )}
+          {item.texto_ocr && <Text style={s.visaoOcr} numberOfLines={4}>"{item.texto_ocr.replace(/\s+/g, ' ')}"</Text>}
+        </View>
+      )}
       <Botao titulo="Excluir registro" icone="close-circle-outline" variante="secundario" onPress={confirmarExclusao} />
       <Text style={s.secao}>Editar informações</Text>
     </View>
@@ -84,5 +103,10 @@ const s = StyleSheet.create({
   situacaoData: { fontSize: 14 },
   acoes: { flexDirection: 'row', gap: espaco.sm },
   finalizado: { textAlign: 'center', color: cores.textoSuave },
+  visao: { backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: raio, padding: espaco.md, gap: espaco.xs },
+  visaoTitulo: { fontSize: 13, fontWeight: '600', color: cores.textoSuave, textTransform: 'uppercase', letterSpacing: 0.5 },
+  visaoLinha: { flexDirection: 'row', alignItems: 'center', gap: espaco.sm },
+  visaoTexto: { fontSize: 14, color: cores.texto },
+  visaoOcr: { fontSize: 12, color: cores.textoSuave, fontStyle: 'italic', marginTop: 2 },
   secao: { fontSize: 17, fontWeight: '700', color: cores.texto, marginTop: espaco.lg },
 });
