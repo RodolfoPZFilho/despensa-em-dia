@@ -23,6 +23,9 @@ export interface Item {
   validade_origem: OrigemValidade; // visão computacional: 'ocr' quando a data veio da foto
   texto_ocr: string | null;        // visão computacional: texto bruto lido na embalagem
   dias_aviso: number;              // avisar N dias antes de vencer (depende do tipo de alimento; só local)
+  // Calculados na consulta (não são colunas): posição do lote entre os ativos com o mesmo código de barras
+  lote_ordem?: number;
+  lotes_total?: number;
   criado_em: string;
   atualizado_em: string;
   excluido: number;
@@ -33,12 +36,32 @@ export type ItemEntrada = Pick<Item, 'nome' | 'categoria' | 'quantidade' | 'unid
 
 export type FiltroLista = 'todos' | 'vencendo' | 'vencidos';
 
+export type OrdemLista = 'validade' | 'cadastro' | 'nome' | 'categoria' | 'local';
+
+/** Opções de ordenação da lista (o ORDER BY vem desta tabela fixa, nunca do usuário). */
+export const ORDENS: { valor: OrdemLista; rotulo: string; sql: string }[] = [
+  { valor: 'validade', rotulo: 'Validade (vence primeiro)', sql: 'validade ASC, nome COLLATE NOCASE ASC' },
+  { valor: 'cadastro', rotulo: 'Cadastro (mais recente)', sql: 'criado_em DESC' },
+  { valor: 'nome', rotulo: 'Nome (A–Z)', sql: 'nome COLLATE NOCASE ASC, validade ASC' },
+  { valor: 'categoria', rotulo: 'Categoria', sql: 'categoria ASC, validade ASC' },
+  { valor: 'local', rotulo: 'Local', sql: 'local ASC, validade ASC' },
+];
+
+/**
+ * Colunas extras: lote_ordem/lotes_total entre os itens ATIVOS com o mesmo código de barras.
+ * Lote 1 = o que vence primeiro. Itens sem código ficam com 0 (não são tratados como lote).
+ */
+const SQL_LOTES = `
+  (SELECT COUNT(*) FROM itens j WHERE j.codigo_barras = itens.codigo_barras AND j.excluido = 0 AND j.status = 'ativo') AS lotes_total,
+  (SELECT COUNT(*) FROM itens j WHERE j.codigo_barras = itens.codigo_barras AND j.excluido = 0 AND j.status = 'ativo'
+     AND (j.validade < itens.validade OR (j.validade = itens.validade AND j.criado_em <= itens.criado_em))) AS lote_ordem`;
+
 const agora = () => new Date().toISOString();
 
 /** Trecho SQL: item ativo que entrou no prazo de aviso do seu tipo (ex.: carne 1 dia, arroz 30). */
 const SQL_PERTO = `validade >= ? AND validade <= date(?, '+' || dias_aviso || ' days')`;
 
-export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje: string, busca = '') {
+export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje: string, busca = '', ordem: OrdemLista = 'validade') {
   let where = `excluido = 0 AND status = 'ativo'`;
   const params: (string | number)[] = [];
   if (filtro === 'vencidos') {
@@ -52,11 +75,26 @@ export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje
     where += ' AND nome LIKE ?';
     params.push(`%${busca.trim()}%`);
   }
-  return db.getAllAsync<Item>(`SELECT * FROM itens WHERE ${where} ORDER BY validade ASC, nome ASC`, params);
+  const orderBy = (ORDENS.find((o) => o.valor === ordem) ?? ORDENS[0]).sql;
+  return db.getAllAsync<Item>(`SELECT *, ${SQL_LOTES} FROM itens WHERE ${where} ORDER BY ${orderBy}`, params);
 }
 
 export function buscarItem(db: SQLiteDatabase, id: string) {
-  return db.getFirstAsync<Item>('SELECT * FROM itens WHERE id = ? AND excluido = 0', [id]);
+  return db.getFirstAsync<Item>(`SELECT *, ${SQL_LOTES} FROM itens WHERE id = ? AND excluido = 0`, [id]);
+}
+
+/** Lotes ativos de um produto (mesmo código de barras), do que vence primeiro ao último. */
+export function listarLotesAtivos(db: SQLiteDatabase, codigo: string, excetoId?: string) {
+  return db.getAllAsync<Pick<Item, 'id' | 'nome' | 'validade' | 'quantidade' | 'unidade' | 'local'>>(
+    `SELECT id, nome, validade, quantidade, unidade, local FROM itens
+     WHERE codigo_barras = ? AND excluido = 0 AND status = 'ativo' AND id <> ? ORDER BY validade, criado_em`,
+    [codigo, excetoId ?? ''],
+  );
+}
+
+/** Soma quantidade a um lote existente (mesma validade), em vez de criar outro registro. */
+export async function somarQuantidade(db: SQLiteDatabase, id: string, qtd: number) {
+  await db.runAsync('UPDATE itens SET quantidade = quantidade + ?, atualizado_em = ?, sincronizado = 0 WHERE id = ?', [qtd, agora(), id]);
 }
 
 export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
@@ -150,12 +188,12 @@ export function listarGrupo(db: SQLiteDatabase, grupo: GrupoDetalhe, hoje: strin
   switch (grupo) {
     case 'vencendo':
       return db.getAllAsync<Item>(
-        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND ${SQL_PERTO} ORDER BY validade, nome`,
+        `SELECT *, ${SQL_LOTES} FROM itens WHERE excluido = 0 AND status = 'ativo' AND ${SQL_PERTO} ORDER BY validade, nome`,
         [hoje, hoje],
       );
     case 'vencidos':
       return db.getAllAsync<Item>(
-        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND validade < ? ORDER BY validade, nome`,
+        `SELECT *, ${SQL_LOTES} FROM itens WHERE excluido = 0 AND status = 'ativo' AND validade < ? ORDER BY validade, nome`,
         [hoje],
       );
     case 'consumidos':

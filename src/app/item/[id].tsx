@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { atualizarItem, buscarItem, excluirItem, mudarStatus, type Item, type StatusItem } from '@/db/itens';
-import { corSituacao, formatarData, textoSituacao } from '@/lib/datas';
+import { atualizarItem, buscarItem, excluirItem, listarLotesAtivos, mudarStatus, type Item, type StatusItem } from '@/db/itens';
+import { corGradiente, corSituacao, formatarData, textoSituacao } from '@/lib/datas';
+import { formatarQtd } from '@/components/ItemCard';
 import { cores, espaco, raio } from '@/lib/theme';
 import { confirmar } from '@/lib/alertas';
 import { ItemForm } from '@/components/ItemForm';
@@ -16,9 +17,13 @@ export default function DetalheItemScreen() {
   const db = useSQLiteContext();
   const { notificarAlteracao } = useSync();
   const [item, setItem] = useState<Item | null | undefined>(undefined);
+  const [outrosLotes, setOutrosLotes] = useState<Awaited<ReturnType<typeof listarLotesAtivos>>>([]);
 
   useEffect(() => {
-    buscarItem(db, id).then(setItem);
+    buscarItem(db, id).then(async (i) => {
+      setItem(i);
+      setOutrosLotes(i?.codigo_barras ? await listarLotesAtivos(db, i.codigo_barras, i.id) : []);
+    });
   }, [db, id]);
 
   if (item === undefined) return <ActivityIndicator style={{ marginTop: 40 }} color={cores.primaria} />;
@@ -45,7 +50,22 @@ export default function DetalheItemScreen() {
       <View style={[s.situacao, { backgroundColor: fundo }]}>
         <Text style={[s.situacaoTexto, { color: cor }]}>{textoSituacao(item.validade)}</Text>
         <Text style={[s.situacaoData, { color: cor }]}>Validade {formatarData(item.validade)}</Text>
+        {item.status === 'ativo' && (item.lotes_total ?? 0) > 1 && (
+          <Text style={[s.situacaoData, { color: cor, fontWeight: '700' }]}>Lote {item.lote_ordem} de {item.lotes_total}</Text>
+        )}
       </View>
+      {outrosLotes.length > 0 && (
+        <View style={s.visao}>
+          <Text style={s.visaoTitulo}>Outros lotes deste produto</Text>
+          {outrosLotes.map((l) => (
+            <Pressable key={l.id} style={s.visaoLinha} onPress={() => router.replace({ pathname: '/item/[id]', params: { id: l.id } })}>
+              <View style={[s.bolinha, { backgroundColor: corGradiente(l.validade, item.dias_aviso) }]} />
+              <Text style={[s.visaoTexto, { flex: 1 }]}>{formatarQtd(l.quantidade)} {l.unidade} · validade {formatarData(l.validade)} · {l.local}</Text>
+              <Ionicons name="chevron-forward" size={16} color={cores.textoSuave} />
+            </Pressable>
+          ))}
+        </View>
+      )}
       {item.status === 'ativo' ? (
         <View style={s.acoes}>
           <Botao titulo="Consumi" icone="restaurant-outline" variante="secundario" onPress={() => finalizar('consumido')} estilo={{ flex: 1 }} />
@@ -107,6 +127,7 @@ const s = StyleSheet.create({
   visaoTitulo: { fontSize: 13, fontWeight: '600', color: cores.textoSuave, textTransform: 'uppercase', letterSpacing: 0.5 },
   visaoLinha: { flexDirection: 'row', alignItems: 'center', gap: espaco.sm },
   visaoTexto: { fontSize: 14, color: cores.texto },
+  bolinha: { width: 10, height: 10, borderRadius: 5 },
   visaoOcr: { fontSize: 12, color: cores.textoSuave, fontStyle: 'italic', marginTop: 2 },
   secao: { fontSize: 17, fontWeight: '700', color: cores.texto, marginTop: espaco.lg },
 });

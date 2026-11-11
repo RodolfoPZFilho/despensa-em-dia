@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Item } from '@/db/itens';
-import { corSituacao, formatarData, textoSituacao } from '@/lib/datas';
+import { corGradiente, corSituacao, formatarData, textoSituacao } from '@/lib/datas';
 import { cores, espaco, raio } from '@/lib/theme';
 
 const iconeLocal: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -20,9 +20,11 @@ export function ItemCard({ item, onPress }: { item: Item; onPress: () => void })
   const selo = finalizado
     ? `${item.status === 'consumido' ? 'Consumido' : 'Descartado'} em ${new Date(item.atualizado_em).toLocaleDateString('pt-BR')}`
     : textoSituacao(item.validade);
+  const faixa = finalizado ? cor : corGradiente(item.validade, item.dias_aviso);
+  const lote = !finalizado && (item.lotes_total ?? 0) > 1 ? `Lote ${item.lote_ordem}/${item.lotes_total}` : null;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [s.card, pressed && { opacity: 0.7 }]}>
-      <View style={[s.faixa, { backgroundColor: cor }]} />
+      <View style={[s.faixa, { backgroundColor: faixa }]} />
       <View style={s.corpo}>
         <View style={s.linha}>
           <Text style={s.nome} numberOfLines={1}>{item.nome}</Text>
@@ -37,7 +39,15 @@ export function ItemCard({ item, onPress }: { item: Item; onPress: () => void })
             <Text style={[s.badgeTexto, { color: cor }]}>{selo}</Text>
           </View>
         </View>
-        <Text style={s.data}>Validade: {formatarData(item.validade)}</Text>
+        <View style={s.linha}>
+          <Text style={s.data}>Validade: {formatarData(item.validade)}</Text>
+          {lote && (
+            <View style={[s.selo, { borderColor: faixa }]}>
+              <Ionicons name="layers-outline" size={12} color={faixa} />
+              <Text style={[s.seloTexto, { color: faixa }]}>{lote}</Text>
+            </View>
+          )}
+        </View>
       </View>
     </Pressable>
   );
@@ -47,7 +57,7 @@ export const formatarQtd = (n: number) => (Number.isInteger(n) ? String(n) : n.t
 
 const s = StyleSheet.create({
   card: { flexDirection: 'row', backgroundColor: cores.cartao, borderRadius: raio, overflow: 'hidden', borderWidth: 1, borderColor: cores.borda },
-  faixa: { width: 5 },
+  faixa: { width: 6 },
   corpo: { flex: 1, padding: espaco.md, gap: 6 },
   linha: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: espaco.sm },
   nome: { flex: 1, fontSize: 16, fontWeight: '600', color: cores.texto },
@@ -57,4 +67,6 @@ const s = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   badgeTexto: { fontSize: 12, fontWeight: '600' },
   data: { fontSize: 12, color: cores.textoSuave },
+  selo: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 },
+  seloTexto: { fontSize: 11, fontWeight: '700' },
 });

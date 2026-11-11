@@ -1,9 +1,11 @@
 import { createElement, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import { router } from 'expo-router';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { CATEGORIAS, LOCAIS, UNIDADES, type ItemEntrada, type OrigemValidade } from '@/db/itens';
+import { CATEGORIAS, LOCAIS, UNIDADES, listarLotesAtivos, somarQuantidade, type ItemEntrada, type OrigemValidade } from '@/db/itens';
+import { useSync } from '@/sync/SyncContext';
 import { deISODia, formatarData, paraISODia } from '@/lib/datas';
 import { cores, espaco, raio } from '@/lib/theme';
 import { avisar } from '@/lib/alertas';
@@ -12,6 +14,7 @@ import { extrairValidade, type CandidataValidade } from '@/lib/validadeOcr';
 import { orientar } from '@/lib/armazenamento';
 import { Botao, Chip } from './ui';
 import { CameraVisao, type FotoCapturada, type ModoCamera } from './CameraVisao';
+import { DialogoLotes, type LoteResumo } from './DialogoLotes';
 
 const ATALHOS = [
   { rotulo: '+3 dias', dias: 3 },
@@ -44,6 +47,9 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
   const [camera, setCamera] = useState<ModoCamera | null>(null);
   const [processando, setProcessando] = useState<string | null>(null); // mensagem enquanto lê
   const [infoCodigo, setInfoCodigo] = useState<string | null>(null);
+  const [lotesExistentes, setLotesExistentes] = useState<LoteResumo[] | null>(null); // abre o "Tem certeza?"
+  const [novoLote, setNovoLote] = useState<number | null>(null); // número do lote que será criado
+  const { notificarAlteracao } = useSync();
 
   // --- Orientação de armazenamento e prazo de aviso (lib/armazenamento) ---
   const [conservacao, setConservacao] = useState<string | null>(null); // texto do fabricante (Open Food Facts)
@@ -87,6 +93,20 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
     } finally {
       setProcessando(null);
     }
+    // Cadastro novo de um produto que já tem lotes ativos: pergunta antes de seguir
+    if (!inicial) {
+      const lotes = await listarLotesAtivos(db, limpo);
+      if (lotes.length > 0) setLotesExistentes(lotes);
+    }
+  }
+
+  async function somarAoLote(id: string) {
+    const qtd = Number(quantidade.replace(',', '.'));
+    setLotesExistentes(null);
+    if (!Number.isFinite(qtd) || qtd <= 0) return avisar('Quantidade inválida', 'Ajuste a quantidade e leia o código de novo.');
+    await somarQuantidade(db, id, qtd);
+    notificarAlteracao();
+    router.back();
   }
 
   async function aoFotografarValidade(foto: FotoCapturada) {
@@ -158,9 +178,9 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
           <View style={s.infoVisao}>
             <Ionicons name="barcode-outline" size={16} color={cores.primaria} />
             <Text style={s.textoInfo}>
-              Código {codigoBarras}{infoCodigo ? ` · ${infoCodigo}` : ''}
+              Código {codigoBarras}{infoCodigo ? ` · ${infoCodigo}` : ''}{novoLote ? ` · Será o lote ${novoLote}.` : ''}
             </Text>
-            <Pressable onPress={() => { setCodigoBarras(null); setInfoCodigo(null); setConservacao(null); }} hitSlop={8} accessibilityLabel="Remover código">
+            <Pressable onPress={() => { setCodigoBarras(null); setInfoCodigo(null); setConservacao(null); setNovoLote(null); }} hitSlop={8} accessibilityLabel="Remover código">
               <Ionicons name="close-circle" size={18} color={cores.textoSuave} />
             </Pressable>
           </View>
@@ -258,6 +278,15 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
 
         <Botao titulo={salvando ? 'Salvando…' : tituloBotao} icone="checkmark" onPress={salvar} desabilitado={salvando} estilo={{ marginTop: espaco.xl }} />
       </ScrollView>
+
+      <DialogoLotes
+        lotes={lotesExistentes}
+        quantidade={quantidade}
+        diasAviso={orientacao.diasAviso}
+        onNovoLote={() => { setNovoLote((lotesExistentes?.length ?? 0) + 1); setLotesExistentes(null); }}
+        onSomar={somarAoLote}
+        onDesistir={() => { setLotesExistentes(null); router.back(); }}
+      />
 
       <CameraVisao
         modo={camera ?? 'codigo'}

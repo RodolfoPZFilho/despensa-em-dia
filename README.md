@@ -64,6 +64,27 @@ A dica vem de uma tabela própria (`src/lib/armazenamento.ts`). A Open Food Fact
 preenchido em cerca de 2% dos produtos brasileiros mais escaneados, e quase sempre em outro idioma. Por isso a API é usada como
 complemento, e a tabela garante a dica sem internet.
 
+### Produto que já está na despensa: lotes
+
+Ao ler o código de barras de um produto que já tem itens **ativos**, o app pergunta antes de cadastrar:
+
+> **Tem certeza?** Você já tem 2 lotes ativos de Leite Integral na despensa (3 un no total):
+> Lote 1 · 2 un · validade 14/11 · Lote 2 · 1 un · validade 20/11
+
+- **+** ao lado de um lote: soma a quantidade a ele (mesma validade) sem criar outro registro.
+- **Cadastrar novo lote**: segue o cadastro com outra validade. O formulário mostra "Será o lote 3".
+- **Não cadastrar**: fecha o formulário.
+
+Na lista, cada lote recebe o selo **Lote 1/3, 2/3…** (lote 1 = o que vence primeiro). A tela do alimento mostra
+"Lote x de y" e os outros lotes do mesmo produto.
+
+**Gradiente de cor:** a faixa lateral de cada alimento vai de **verde → amarelo → laranja → vermelho** conforme o tempo que
+falta, medido em prazos de aviso do tipo: verde com 4× o prazo ou mais, laranja ao entrar no prazo, vermelho no vencimento.
+Assim, carne com 3 dias já aparece amarelada (aviso de 1 dia), e arroz com 3 dias aparece vermelho (aviso de 30).
+
+**Ordenação** (botão "Ordenar" na Despensa, a escolha fica lembrada): validade (padrão), cadastro mais recente, nome A–Z,
+categoria ou local.
+
 ## 3.1 Avisos de vencimento (notificações)
 
 Cada tipo de alimento tem um **prazo de aviso**. Quanto mais perecível, mais perto do vencimento é o aviso, porque a validade já é
