@@ -1,4 +1,4 @@
-import { createElement, useState, type ReactNode } from 'react';
+import { createElement, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -9,6 +9,7 @@ import { cores, espaco, raio } from '@/lib/theme';
 import { avisar } from '@/lib/alertas';
 import { buscarProdutoPorCodigo, lerTextoDaFoto } from '@/lib/visao';
 import { extrairValidade, type CandidataValidade } from '@/lib/validadeOcr';
+import { orientar } from '@/lib/armazenamento';
 import { Botao, Chip } from './ui';
 import { CameraVisao, type FotoCapturada, type ModoCamera } from './CameraVisao';
 
@@ -44,6 +45,20 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
   const [processando, setProcessando] = useState<string | null>(null); // mensagem enquanto lê
   const [infoCodigo, setInfoCodigo] = useState<string | null>(null);
 
+  // --- Orientação de armazenamento e prazo de aviso (lib/armazenamento) ---
+  const [conservacao, setConservacao] = useState<string | null>(null); // texto do fabricante (Open Food Facts)
+  const [localTocado, setLocalTocado] = useState(Boolean(inicial));         // usuário já escolheu? então não sugerimos por cima
+  const [categoriaTocada, setCategoriaTocada] = useState(Boolean(inicial));
+  const orientacao = useMemo(() => orientar(nome, categoria), [nome, categoria]);
+
+  // Ao reconhecer o alimento pelo nome, sugere categoria e local (sem desfazer escolhas do usuário)
+  useEffect(() => {
+    const o = orientar(nome, categoria);
+    if (!o.porNome) return;
+    if (!categoriaTocada) setCategoria(o.categoria);
+    if (!localTocado) setLocal(o.local);
+  }, [nome]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Data escolhida à mão (calendário/atalhos): deixa de ser "lida pela câmera". */
   function escolherDataManual(iso: string) {
     setValidade(iso);
@@ -64,8 +79,10 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
       }
       setNome(p.nome);
       setCategoria(p.categoria);
+      setConservacao(p.conservacao ?? null);
       if (p.unidade) setUnidade(p.unidade);
       if (p.local) setLocal(p.local);
+      if (p.origem === 'despensa') { setLocalTocado(true); setCategoriaTocada(true); } // repete o que o usuário já usou
       setInfoCodigo(p.origem === 'despensa' ? 'Reconhecido pelo seu histórico na despensa.' : 'Encontrado na base Open Food Facts. Confira o nome.');
     } finally {
       setProcessando(null);
@@ -143,7 +160,7 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
             <Text style={s.textoInfo}>
               Código {codigoBarras}{infoCodigo ? ` · ${infoCodigo}` : ''}
             </Text>
-            <Pressable onPress={() => { setCodigoBarras(null); setInfoCodigo(null); }} hitSlop={8} accessibilityLabel="Remover código">
+            <Pressable onPress={() => { setCodigoBarras(null); setInfoCodigo(null); setConservacao(null); }} hitSlop={8} accessibilityLabel="Remover código">
               <Ionicons name="close-circle" size={18} color={cores.textoSuave} />
             </Pressable>
           </View>
@@ -207,12 +224,26 @@ export function ItemForm({ inicial, tituloBotao, onSalvar, cabecalho }: {
 
         <Rotulo texto="Onde está guardado" />
         <View style={s.chips}>
-          {LOCAIS.map((l) => <Chip key={l} rotulo={l} ativo={local === l} onPress={() => setLocal(l)} />)}
+          {LOCAIS.map((l) => <Chip key={l} rotulo={l} ativo={local === l} onPress={() => { setLocal(l); setLocalTocado(true); }} />)}
         </View>
+        {(nome.trim() !== '' || categoria !== 'Outros') && (
+          <View style={s.dica}>
+            <Ionicons name="bulb-outline" size={18} color={cores.atencao} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.dicaTitulo}>{orientacao.porNome ? `Dica: ${orientacao.tipo}` : `Dica: ${categoria}`}</Text>
+              {conservacao && <Text style={s.dicaTexto}>Fabricante: {conservacao}</Text>}
+              <Text style={s.dicaTexto}>{orientacao.dica}</Text>
+              {local !== orientacao.local && <Text style={s.dicaTexto}>Local recomendado: {orientacao.local}.</Text>}
+              <Text style={s.dicaAviso}>
+                🔔 Aviso {orientacao.diasAviso === 1 ? '1 dia' : `${orientacao.diasAviso} dias`} antes do vencimento
+              </Text>
+            </View>
+          </View>
+        )}
 
         <Rotulo texto="Categoria" />
         <View style={s.chips}>
-          {CATEGORIAS.map((c) => <Chip key={c} rotulo={c} ativo={categoria === c} onPress={() => setCategoria(c)} />)}
+          {CATEGORIAS.map((c) => <Chip key={c} rotulo={c} ativo={categoria === c} onPress={() => { setCategoria(c); setCategoriaTocada(true); }} />)}
         </View>
 
         <Rotulo texto="Observação (opcional)" />
@@ -276,6 +307,10 @@ const s = StyleSheet.create({
   textoBotaoCamera: { fontSize: 11, fontWeight: '600', color: cores.primaria, textAlign: 'center' },
   infoVisao: { flexDirection: 'row', alignItems: 'center', gap: espaco.sm, marginTop: espaco.sm, backgroundColor: cores.primariaClara, borderRadius: raio, padding: espaco.sm },
   textoInfo: { flex: 1, fontSize: 13, color: cores.textoSuave, marginTop: espaco.xs },
+  dica: { flexDirection: 'row', gap: espaco.sm, marginTop: espaco.md, backgroundColor: cores.atencaoFundo, borderRadius: raio, padding: espaco.md },
+  dicaTitulo: { fontSize: 13, fontWeight: '700', color: cores.texto },
+  dicaTexto: { fontSize: 13, color: cores.texto, lineHeight: 18 },
+  dicaAviso: { fontSize: 12, color: cores.atencao, fontWeight: '600', marginTop: 2 },
   processando: { flexDirection: 'row', alignItems: 'center', gap: espaco.md, backgroundColor: cores.primariaClara, borderRadius: raio, padding: espaco.md },
   textoProcessando: { fontSize: 15, color: cores.primaria, fontWeight: '600' },
 });

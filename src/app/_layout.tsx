@@ -6,6 +6,8 @@ import { migrarBanco } from '@/db/schema';
 import { SyncProvider, useSync } from '@/sync/SyncContext';
 import { supabaseConfigurado } from '@/lib/supabase';
 import { cores } from '@/lib/theme';
+import { notificacoesDisponiveis } from '@/lib/notificacoes';
+import { AgendadorNotificacoes } from '@/components/AgendadorNotificacoes';
 
 export default function RootLayout() {
   return (
@@ -37,6 +39,8 @@ function Navegacao() {
   const logado = !supabaseConfigurado || Boolean(sessao);
 
   return (
+    <>
+    {logado && notificacoesDisponiveis && <AgendadorNotificacoes />}
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: cores.fundo },
@@ -54,5 +58,6 @@ function Navegacao() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
       </Stack.Protected>
     </Stack>
+    </>
   );
 }

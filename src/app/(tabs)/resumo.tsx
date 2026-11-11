@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { listarAtivos, obterResumo, type GrupoDetalhe, type Item, type Resumo } from '@/db/itens';
-import { DIAS_ALERTA, paraISODia } from '@/lib/datas';
+import { paraISODia } from '@/lib/datas';
 import { cores, espaco, raio } from '@/lib/theme';
 import { ItemCard } from '@/components/ItemCard';
 import { useSync } from '@/sync/SyncContext';
@@ -17,12 +17,9 @@ export default function ResumoScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const hoje = new Date();
-      const limite = new Date(hoje);
-      limite.setDate(limite.getDate() + DIAS_ALERTA);
-      const h = paraISODia(hoje), l = paraISODia(limite);
-      obterResumo(db, h, l).then(setR);
-      listarAtivos(db, 'vencendo', h, l).then((lista) => setUrgentes(lista.slice(0, 3)));
+      const h = paraISODia(new Date());
+      obterResumo(db, h).then(setR);
+      listarAtivos(db, 'vencendo', h).then((lista) => setUrgentes(lista.slice(0, 3)));
     }, [db, versaoDados]),
   );
 
@@ -34,7 +31,7 @@ export default function ResumoScreen() {
     <ScrollView contentContainerStyle={s.conteudo}>
       <View style={s.grade}>
         <Cartao icone="basket-outline" valor={r.ativos} rotulo="Na despensa" cor={cores.primaria} onPress={() => router.navigate('/')} />
-        <Cartao icone="time-outline" valor={r.vencendo} rotulo={`Vencem em até ${DIAS_ALERTA} dias`} cor={cores.atencao} onPress={() => abrirDetalhes('vencendo')} />
+        <Cartao icone="time-outline" valor={r.vencendo} rotulo="Perto de vencer" cor={cores.atencao} onPress={() => abrirDetalhes('vencendo')} />
         <Cartao icone="alert-circle-outline" valor={r.vencidos} rotulo="Vencidos" cor={cores.vencido} onPress={() => abrirDetalhes('vencidos')} />
         <Cartao icone="restaurant-outline" valor={r.consumidos} rotulo="Consumidos" cor={cores.primaria} onPress={() => abrirDetalhes('consumidos')} />
       </View>
@@ -56,7 +53,7 @@ export default function ResumoScreen() {
       <View style={s.bloco}>
         <Text style={s.titulo}>Use primeiro</Text>
         {urgentes.length === 0 ? (
-          <Text style={s.suave}>Nenhum alimento vence nos próximos {DIAS_ALERTA} dias.</Text>
+          <Text style={s.suave}>Nenhum alimento está perto de vencer.</Text>
         ) : (
           <View style={{ gap: espaco.sm }}>
             {urgentes.map((i) => <ItemCard key={i.id} item={i} onPress={() => router.push({ pathname: '/item/[id]', params: { id: i.id } })} />)}

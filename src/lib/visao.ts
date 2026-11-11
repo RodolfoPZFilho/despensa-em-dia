@@ -49,6 +49,7 @@ export interface ProdutoEncontrado {
   categoria: string;
   unidade?: string;
   local?: string;
+  conservacao?: string; // instrução do fabricante (Open Food Facts), quando existir em português
   origem: 'despensa' | 'openfoodfacts';
 }
 
@@ -83,7 +84,7 @@ export async function buscarProdutoPorCodigo(db: SQLiteDatabase, codigo: string)
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const campos = 'product_name,product_name_pt,brands,categories_tags';
+    const campos = 'product_name,product_name_pt,brands,categories_tags,conservation_conditions_pt';
     const resp = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json?fields=${campos}`, {
       signal: ctrl.signal,
     });
@@ -95,7 +96,8 @@ export async function buscarProdutoPorCodigo(db: SQLiteDatabase, codigo: string)
     if (!nome) return null;
     const marca = String(p.brands ?? '').split(',')[0].trim();
     if (marca && !nome.toLowerCase().includes(marca.toLowerCase())) nome = `${nome} ${marca}`;
-    return { codigo, nome: nome.slice(0, 120), categoria: mapearCategoria(p.categories_tags), origem: 'openfoodfacts' };
+    const conservacao = String(p.conservation_conditions_pt ?? '').trim() || undefined;
+    return { codigo, nome: nome.slice(0, 120), categoria: mapearCategoria(p.categories_tags), conservacao, origem: 'openfoodfacts' };
   } catch {
     return null; // sem internet ou base fora do ar: o usuário digita o nome
   } finally {

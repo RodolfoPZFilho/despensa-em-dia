@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from '@/lib/supabase';
 import { gravarMeta, lerMeta, type Item } from '@/db/itens';
+import { diasDeAviso } from '@/lib/armazenamento';
 
 /** Formato da linha na tabela public.itens do Supabase (PostgreSQL). */
 interface ItemRemoto {
@@ -63,10 +64,11 @@ async function baixar(db: SQLiteDatabase, userId: string) {
         await db.runAsync(
           `INSERT OR REPLACE INTO itens
              (id, nome, categoria, quantidade, unidade, local, validade, status, observacao,
-              codigo_barras, validade_origem, texto_ocr, criado_em, atualizado_em, excluido, sincronizado)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+              codigo_barras, validade_origem, texto_ocr, dias_aviso, criado_em, atualizado_em, excluido, sincronizado)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
           [r.id, r.nome, r.categoria, Number(r.quantidade), r.unidade, r.local, r.validade, r.status, r.observacao,
-           r.codigo_barras ?? null, r.validade_origem ?? 'manual', r.texto_ocr ?? null, iso(r.criado_em), remotoEm, r.excluido ? 1 : 0],
+           r.codigo_barras ?? null, r.validade_origem ?? 'manual', r.texto_ocr ?? null, diasDeAviso(r.nome, r.categoria),
+           iso(r.criado_em), remotoEm, r.excluido ? 1 : 0],
         );
         total++;
       }

@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { diasDeAviso } from '@/lib/armazenamento';
 
-const VERSAO_ATUAL = 2;
+const VERSAO_ATUAL = 3;
 
 /**
  * Cria/atualiza o banco local. Chamado pelo <SQLiteProvider onInit>.
@@ -53,7 +54,17 @@ export async function migrarBanco(db: SQLiteDatabase) {
     versao = 2;
   }
 
-  // Próximas migrações: if (versao === 2) { ...; versao = 3; }
+  // v3: prazo de aviso por tipo de alimento (dado derivado, só local) + preenchimento dos itens existentes
+  if (versao === 2) {
+    await db.execAsync(`ALTER TABLE itens ADD COLUMN dias_aviso INTEGER NOT NULL DEFAULT 3;`);
+    const itens = await db.getAllAsync<{ id: string; nome: string; categoria: string }>('SELECT id, nome, categoria FROM itens');
+    for (const i of itens) {
+      await db.runAsync('UPDATE itens SET dias_aviso = ? WHERE id = ?', [diasDeAviso(i.nome, i.categoria), i.id]);
+    }
+    versao = 3;
+  }
+
+  // Próximas migrações: if (versao === 3) { ...; versao = 4; }
 
   await db.execAsync(`PRAGMA user_version = ${versao}`);
 }

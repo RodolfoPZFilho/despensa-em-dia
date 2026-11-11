@@ -13,6 +13,7 @@
     "expo-crypto": "~58.0.7",
     "expo-image-manipulator": "~58.0.16",
     "expo-linking": "~58.0.16",
+    "expo-notifications": "~58.1.8",
     "expo-router": "~58.0.30",
     "expo-sqlite": "~58.0.15",
     "expo-status-bar": "~58.0.4",
@@ -35,7 +36,9 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "build:web": "expo export --platform web && node scripts/preparar-netlify.js",
-    "test:ocr": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-validade-ocr.mjs"
+    "test:ocr": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-validade-ocr.mjs",
+    "test:armazenamento": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-armazenamento.mjs",
+    "test": "npm run -s test:ocr && npm run -s test:armazenamento"
   },
   "private": true
 }

@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import * as Crypto from 'expo-crypto';
+import { diasDeAviso } from '@/lib/armazenamento';
 
 export const CATEGORIAS = ['Laticínios', 'Carnes', 'Hortifrúti', 'Padaria', 'Grãos', 'Bebidas', 'Congelados', 'Outros'] as const;
 export const LOCAIS = ['Geladeira', 'Freezer', 'Armário'] as const;
@@ -21,6 +22,7 @@ export interface Item {
   codigo_barras: string | null;    // visão computacional: código de barras lido pela câmera
   validade_origem: OrigemValidade; // visão computacional: 'ocr' quando a data veio da foto
   texto_ocr: string | null;        // visão computacional: texto bruto lido na embalagem
+  dias_aviso: number;              // avisar N dias antes de vencer (depende do tipo de alimento; só local)
   criado_em: string;
   atualizado_em: string;
   excluido: number;
@@ -33,15 +35,18 @@ export type FiltroLista = 'todos' | 'vencendo' | 'vencidos';
 
 const agora = () => new Date().toISOString();
 
-export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje: string, limite: string, busca = '') {
+/** Trecho SQL: item ativo que entrou no prazo de aviso do seu tipo (ex.: carne 1 dia, arroz 30). */
+const SQL_PERTO = `validade >= ? AND validade <= date(?, '+' || dias_aviso || ' days')`;
+
+export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje: string, busca = '') {
   let where = `excluido = 0 AND status = 'ativo'`;
   const params: (string | number)[] = [];
   if (filtro === 'vencidos') {
     where += ' AND validade < ?';
     params.push(hoje);
   } else if (filtro === 'vencendo') {
-    where += ' AND validade >= ? AND validade <= ?';
-    params.push(hoje, limite);
+    where += ` AND ${SQL_PERTO}`;
+    params.push(hoje, hoje);
   }
   if (busca.trim()) {
     where += ' AND nome LIKE ?';
@@ -59,10 +64,10 @@ export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
   const t = agora();
   await db.runAsync(
     `INSERT INTO itens (id, nome, categoria, quantidade, unidade, local, validade, status, observacao,
-                        codigo_barras, validade_origem, texto_ocr, criado_em, atualizado_em, excluido, sincronizado)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', ?, ?, ?, ?, ?, ?, 0, 0)`,
+                        codigo_barras, validade_origem, texto_ocr, dias_aviso, criado_em, atualizado_em, excluido, sincronizado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
     [id, e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null,
-     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, t, t],
+     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, diasDeAviso(e.nome, e.categoria), t, t],
   );
   return id;
 }
@@ -70,9 +75,9 @@ export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
 export async function atualizarItem(db: SQLiteDatabase, id: string, e: ItemEntrada) {
   await db.runAsync(
     `UPDATE itens SET nome = ?, categoria = ?, quantidade = ?, unidade = ?, local = ?, validade = ?, observacao = ?,
-       codigo_barras = ?, validade_origem = ?, texto_ocr = ?, atualizado_em = ?, sincronizado = 0 WHERE id = ?`,
+       codigo_barras = ?, validade_origem = ?, texto_ocr = ?, dias_aviso = ?, atualizado_em = ?, sincronizado = 0 WHERE id = ?`,
     [e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null,
-     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, agora(), id],
+     e.codigo_barras || null, e.validade_origem, e.texto_ocr || null, diasDeAviso(e.nome, e.categoria), agora(), id],
   );
 }
 
@@ -96,18 +101,18 @@ export interface Resumo {
   porLocal: { local: string; total: number }[];
 }
 
-export async function obterResumo(db: SQLiteDatabase, hoje: string, limite: string): Promise<Resumo> {
+export async function obterResumo(db: SQLiteDatabase, hoje: string): Promise<Resumo> {
   const r = await db.getFirstAsync<Omit<Resumo, 'porLocal'>>(
     `SELECT
        SUM(CASE WHEN status = 'ativo' THEN 1 ELSE 0 END) AS ativos,
        SUM(CASE WHEN status = 'ativo' AND validade < ? THEN 1 ELSE 0 END) AS vencidos,
-       SUM(CASE WHEN status = 'ativo' AND validade >= ? AND validade <= ? THEN 1 ELSE 0 END) AS vencendo,
+       SUM(CASE WHEN status = 'ativo' AND ${SQL_PERTO} THEN 1 ELSE 0 END) AS vencendo,
        SUM(CASE WHEN status = 'consumido' THEN 1 ELSE 0 END) AS consumidos,
        SUM(CASE WHEN status = 'descartado' THEN 1 ELSE 0 END) AS descartados,
        SUM(CASE WHEN codigo_barras IS NOT NULL THEN 1 ELSE 0 END) AS comCodigo,
        SUM(CASE WHEN validade_origem = 'ocr' THEN 1 ELSE 0 END) AS validadeOcr
      FROM itens WHERE excluido = 0`,
-    [hoje, hoje, limite],
+    [hoje, hoje, hoje],
   );
   const porLocal = await db.getAllAsync<{ local: string; total: number }>(
     `SELECT local, COUNT(*) AS total FROM itens WHERE excluido = 0 AND status = 'ativo' GROUP BY local ORDER BY total DESC`,
@@ -141,12 +146,12 @@ export async function gravarMeta(db: SQLiteDatabase, chave: string, valor: strin
 export type GrupoDetalhe = 'vencendo' | 'vencidos' | 'consumidos' | 'descartados';
 
 /** Lista usada na aba Detalhes: a vencer/vencidos (ativos) e o histórico de consumidos/descartados. */
-export function listarGrupo(db: SQLiteDatabase, grupo: GrupoDetalhe, hoje: string, limite: string) {
+export function listarGrupo(db: SQLiteDatabase, grupo: GrupoDetalhe, hoje: string) {
   switch (grupo) {
     case 'vencendo':
       return db.getAllAsync<Item>(
-        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND validade >= ? AND validade <= ? ORDER BY validade, nome`,
-        [hoje, limite],
+        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND ${SQL_PERTO} ORDER BY validade, nome`,
+        [hoje, hoje],
       );
     case 'vencidos':
       return db.getAllAsync<Item>(

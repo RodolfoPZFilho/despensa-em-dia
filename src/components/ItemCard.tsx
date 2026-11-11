@@ -16,7 +16,7 @@ export function ItemCard({ item, onPress }: { item: Item; onPress: () => void })
     ? item.status === 'consumido'
       ? { cor: cores.primaria, fundo: cores.primariaClara }
       : { cor: cores.vencido, fundo: cores.vencidoFundo }
-    : corSituacao(item.validade);
+    : corSituacao(item.validade, item.dias_aviso);
   const selo = finalizado
     ? `${item.status === 'consumido' ? 'Consumido' : 'Descartado'} em ${new Date(item.atualizado_em).toLocaleDateString('pt-BR')}`
     : textoSituacao(item.validade);

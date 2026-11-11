@@ -30,10 +30,11 @@ export const DIAS_ALERTA = 3;
 
 export type SituacaoValidade = 'vencido' | 'vence_logo' | 'ok';
 
-export function situacao(validade: string): SituacaoValidade {
+/** `diasAviso` = antecedência do aviso para o tipo do alimento (ver lib/armazenamento). */
+export function situacao(validade: string, diasAviso = DIAS_ALERTA): SituacaoValidade {
   const d = diasParaVencer(validade);
   if (d < 0) return 'vencido';
-  if (d <= DIAS_ALERTA) return 'vence_logo';
+  if (d <= diasAviso) return 'vence_logo';
   return 'ok';
 }
 
@@ -46,8 +47,8 @@ export function textoSituacao(validade: string): string {
   return `Vence em ${d} dias`;
 }
 
-export function corSituacao(validade: string) {
-  const s = situacao(validade);
+export function corSituacao(validade: string, diasAviso = DIAS_ALERTA) {
+  const s = situacao(validade, diasAviso);
   if (s === 'vencido') return { cor: cores.vencido, fundo: cores.vencidoFundo };
   if (s === 'vence_logo') return { cor: cores.atencao, fundo: cores.atencaoFundo };
   return { cor: cores.ok, fundo: cores.primariaClara };

@@ -3,7 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { listarGrupo, obterResumo, type GrupoDetalhe, type Item, type Resumo } from '@/db/itens';
-import { DIAS_ALERTA, paraISODia } from '@/lib/datas';
+import { paraISODia } from '@/lib/datas';
 import { cores, espaco } from '@/lib/theme';
 import { Chip, Vazio } from '@/components/ui';
 import { ItemCard } from '@/components/ItemCard';
@@ -17,14 +17,14 @@ const GRUPOS: { valor: GrupoDetalhe; rotulo: string; chave: keyof Resumo }[] = [
 ];
 
 const DESCRICAO: Record<GrupoDetalhe, string> = {
-  vencendo: `Alimentos que vencem hoje ou nos próximos ${DIAS_ALERTA} dias. Use estes primeiro.`,
+  vencendo: 'Alimentos dentro do prazo de aviso do seu tipo (ex.: carne 1 dia antes, iogurte 2, arroz 30). Use estes primeiro.',
   vencidos: 'Alimentos que já passaram da validade. Toque para marcar como consumido ou descartado.',
   consumidos: 'Histórico do que foi aproveitado, do mais recente para o mais antigo.',
   descartados: 'Histórico do que foi jogado fora, para entender onde há desperdício.',
 };
 
 const VAZIO: Record<GrupoDetalhe, string> = {
-  vencendo: `Nenhum alimento vence nos próximos ${DIAS_ALERTA} dias.`,
+  vencendo: 'Nenhum alimento está perto de vencer.',
   vencidos: 'Nenhum alimento vencido. Muito bem!',
   consumidos: 'Quando você marcar "Consumi" em um alimento, ele aparece aqui.',
   descartados: 'Quando você marcar "Joguei fora" em um alimento, ele aparece aqui.',
@@ -44,11 +44,8 @@ export default function DetalhesScreen() {
   }, [params.grupo]);
 
   const carregar = useCallback(async () => {
-    const hoje = new Date();
-    const limite = new Date(hoje);
-    limite.setDate(limite.getDate() + DIAS_ALERTA);
-    const h = paraISODia(hoje), l = paraISODia(limite);
-    const [lista, r] = await Promise.all([listarGrupo(db, grupo, h, l), obterResumo(db, h, l)]);
+    const h = paraISODia(new Date());
+    const [lista, r] = await Promise.all([listarGrupo(db, grupo, h), obterResumo(db, h)]);
     setItens(lista);
     setResumo(r);
   }, [db, grupo, versaoDados]); // eslint-disable-line react-hooks/exhaustive-deps

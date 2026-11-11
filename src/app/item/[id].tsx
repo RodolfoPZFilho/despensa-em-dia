@@ -24,7 +24,7 @@ export default function DetalheItemScreen() {
   if (item === undefined) return <ActivityIndicator style={{ marginTop: 40 }} color={cores.primaria} />;
   if (item === null) return <Text style={{ padding: espaco.lg }}>Alimento não encontrado.</Text>;
 
-  const { cor, fundo } = corSituacao(item.validade);
+  const { cor, fundo } = corSituacao(item.validade, item.dias_aviso);
 
   async function finalizar(status: StatusItem) {
     await mudarStatus(db, item!.id, status);

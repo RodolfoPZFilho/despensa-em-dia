@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { listarAtivos, type FiltroLista, type Item } from '@/db/itens';
-import { DIAS_ALERTA, paraISODia } from '@/lib/datas';
+import { paraISODia } from '@/lib/datas';
 import { cores, espaco, raio } from '@/lib/theme';
 import { Chip, Vazio } from '@/components/ui';
 import { ItemCard } from '@/components/ItemCard';
@@ -12,7 +12,7 @@ import { useSync } from '@/sync/SyncContext';
 
 const FILTROS: { valor: FiltroLista; rotulo: string }[] = [
   { valor: 'todos', rotulo: 'Todos' },
-  { valor: 'vencendo', rotulo: `Vencem em ${DIAS_ALERTA} dias` },
+  { valor: 'vencendo', rotulo: 'Perto de vencer' },
   { valor: 'vencidos', rotulo: 'Vencidos' },
 ];
 
@@ -25,10 +25,7 @@ export default function DespensaScreen() {
   const [atualizando, setAtualizando] = useState(false);
 
   const carregar = useCallback(async () => {
-    const hoje = new Date();
-    const limite = new Date(hoje);
-    limite.setDate(limite.getDate() + DIAS_ALERTA);
-    setItens(await listarAtivos(db, filtro, paraISODia(hoje), paraISODia(limite), busca));
+    setItens(await listarAtivos(db, filtro, paraISODia(new Date()), busca));
   }, [db, filtro, busca, versaoDados]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFocusEffect(useCallback(() => { carregar(); }, [carregar]));

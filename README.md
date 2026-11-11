@@ -49,7 +49,45 @@ que não está no app pode vencer esquecido. Agora a câmera faz esse trabalho e
 **Por que OCR em nuvem (Edge Function)?** Reconhecimento de texto no próprio aparelho (ML Kit) exige build nativo e não roda no
 Expo Go. A Edge Function mantém a chave da API **fora do app**, exige usuário logado (JWT) e funciona igual no celular e na web.
 
-Teste do interpretador de datas: `npm run test:ocr` (casos reais de embalagens).
+Testes: `npm test` (interpretador de datas com casos reais de embalagens + tabela de armazenamento).
+
+### Dica de armazenamento e prazo de aviso
+
+Quando o alimento é reconhecido (pelo nome digitado ou pelo código de barras), o formulário:
+
+- **sugere o local** (Geladeira, Freezer ou Armário) e a categoria, sem desfazer o que o usuário já escolheu;
+- mostra uma **dica breve** de conservação, por exemplo "Iogurte: geladeira, na prateleira do meio (não na porta). Aberto:
+  consumir em até 3 dias.";
+- se a Open Food Facts tiver a instrução do fabricante em português (`conservation_conditions_pt`), ela aparece junto.
+
+A dica vem de uma tabela própria (`src/lib/armazenamento.ts`). A Open Food Facts tem o campo de conservação, mas ele só está
+preenchido em cerca de 2% dos produtos brasileiros mais escaneados, e quase sempre em outro idioma. Por isso a API é usada como
+complemento, e a tabela garante a dica sem internet.
+
+## 3.1 Avisos de vencimento (notificações)
+
+Cada tipo de alimento tem um **prazo de aviso**. Quanto mais perecível, mais perto do vencimento é o aviso, porque a validade já é
+curta. Quanto mais durável, mais cedo o aviso, para dar tempo de usar:
+
+| Alimento | Avisar antes |
+|---|---|
+| Carnes, frango, peixe, pão, bolo, verduras, banana | 1 dia |
+| Iogurte, frios, embutidos, frutas e legumes | 2 dias |
+| Queijo, requeijão, batata/cebola, padrão de laticínios | 3 dias |
+| Leite, ovos | 5 dias |
+| Suco, manteiga | 7 dias |
+| Leite condensado/creme de leite, biscoito, molhos, refrigerante, congelados | 15 dias |
+| Arroz, feijão, macarrão, farinhas, café, óleo, enlatados | 30 dias |
+
+O prazo vale para tudo no app: a cor laranja, o filtro **Perto de vencer**, o Resumo e as **notificações**.
+
+- Na aba **Conta → Avisos de vencimento** o usuário liga as notificações e **escolhe o horário**. O botão **Testar notificação**
+  envia uma notificação em 5 segundos.
+- São notificações **locais** (`expo-notifications`): ficam agendadas no aparelho e chegam mesmo sem internet e com o app fechado.
+- Um aviso chega no dia em que o alimento entra no prazo e outro no dia do vencimento. Alimentos do mesmo dia vêm juntos numa
+  notificação só. Tocar nela abre o alimento (ou a lista "A vencer").
+- A agenda é refeita sozinha a cada cadastro, edição ou sincronização.
+- No navegador não há notificações agendadas, só os destaques visuais.
 
 ## 4. Tecnologias obrigatórias
 
@@ -100,6 +138,10 @@ src/
   lib/alertas.ts          # alert/confirm que funcionam também na web
   lib/visao.ts            # OCR (Edge Function) e busca de produto por código de barras
   lib/validadeOcr.ts      # interpreta o texto do OCR e encontra a validade
+  lib/armazenamento.ts    # local, dica de conservação e prazo de aviso por alimento
+  lib/notificacoes.ts     # agenda as notificações locais de vencimento
+  components/AgendadorNotificacoes.tsx  # refaz a agenda quando os dados mudam
+  components/BlocoNotificacoes.tsx      # liga/desliga e horário (aba Conta)
   components/CameraVisao.tsx  # câmera: leitor de código de barras e foto da validade
   components/             # ItemCard, ItemForm, Chip, Botao, IndicadorSync
 supabase/schema.sql       # tabela, índices e políticas RLS do PostgreSQL
@@ -107,6 +149,7 @@ supabase/usuarios.sql     # login por nome de usuário
 supabase/visao.sql        # migração do 2º bimestre (colunas da visão computacional)
 supabase/functions/ocr-validade/index.ts  # Edge Function de OCR
 scripts/testar-validade-ocr.mjs           # testes do interpretador de datas
+scripts/testar-armazenamento.mjs          # testes da tabela de armazenamento/prazos
 ```
 
 ### Modelo de dados
@@ -119,6 +162,7 @@ scripts/testar-validade-ocr.mjs           # testes do interpretador de datas
 | codigo_barras | TEXT | text (6 a 14 dígitos) |
 | validade_origem | TEXT `manual`/`ocr` | text + check |
 | texto_ocr | TEXT | text |
+| dias_aviso | INTEGER (só local, calculado pelo tipo do alimento) | — |
 | quantidade | REAL | numeric(10,2) |
 | validade | TEXT `AAAA-MM-DD` | date |
 | status | TEXT (ativo, consumido, descartado) | text + check |
@@ -170,10 +214,11 @@ Sem o `.env` o app roda em **modo somente local** (apenas SQLite), o que é úti
 4. No Supabase (*Table Editor → itens*), confira `codigo_barras`, `validade_origem = ocr` e `texto_ocr`.
 5. Ative o modo avião e escaneie de novo o mesmo produto: ele é reconhecido pela despensa local, sem internet.
 6. Veja o bloco **Cadastro pela câmera** na aba Resumo.
+7. Digite "Iogurte" num novo alimento: o local muda para Geladeira e aparece a dica com o aviso "2 dias antes".
+8. Em **Conta → Avisos de vencimento**, ligue as notificações, escolha o horário e toque em **Testar notificação**.
 
 ## 7. Próximos passos
 
-- Notificações locais quando algo estiver para vencer (`expo-notifications`).
 - OCR no próprio aparelho (ML Kit) num build de desenvolvimento, para ler a validade sem internet.
 
 ## 8. Versão web (para apresentação)

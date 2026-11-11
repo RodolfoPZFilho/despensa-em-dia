@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { cores, espaco, raio } from '@/lib/theme';
 import { avisar, confirmar } from '@/lib/alertas';
 import { Botao } from '@/components/ui';
+import { BlocoNotificacoes } from '@/components/BlocoNotificacoes';
 import { useSync } from '@/sync/SyncContext';
 
 export default function ContaScreen() {
@@ -12,7 +13,8 @@ export default function ContaScreen() {
 
   if (estado === 'desativado') {
     return (
-      <View style={s.conteudo}>
+      <ScrollView contentContainerStyle={s.conteudo}>
+        <BlocoNotificacoes />
         <View style={s.bloco}>
           <Text style={s.titulo}>Modo somente local</Text>
           <Text style={s.texto}>
@@ -20,7 +22,7 @@ export default function ContaScreen() {
             EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_KEY no arquivo .env e reinicie o Expo.
           </Text>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -63,6 +65,8 @@ export default function ContaScreen() {
         )}
         <Botao titulo="Sincronizar agora" icone="sync-outline" desabilitado={estado === 'sincronizando' || estado === 'offline'} onPress={sincronizarAgora} />
       </View>
+
+      <BlocoNotificacoes />
 
       <Botao titulo={saindo ? 'Saindo…' : 'Sair da conta'} variante="perigo" icone="log-out-outline" desabilitado={saindo} onPress={confirmarSaida} />
       <Text style={s.nota}>Ao sair, os alimentos são removidos deste aparelho e continuam guardados na sua conta.</Text>
