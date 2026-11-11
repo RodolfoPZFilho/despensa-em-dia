@@ -1,0 +1,150 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+import * as Crypto from 'expo-crypto';
+
+export const CATEGORIAS = ['Laticínios', 'Carnes', 'Hortifrúti', 'Padaria', 'Grãos', 'Bebidas', 'Congelados', 'Outros'] as const;
+export const LOCAIS = ['Geladeira', 'Freezer', 'Armário'] as const;
+export const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'pct'] as const;
+
+export type StatusItem = 'ativo' | 'consumido' | 'descartado';
+
+export interface Item {
+  id: string;
+  nome: string;
+  categoria: string;
+  quantidade: number;
+  unidade: string;
+  local: string;
+  validade: string;
+  status: StatusItem;
+  observacao: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  excluido: number;
+  sincronizado: number;
+}
+
+export type ItemEntrada = Pick<Item, 'nome' | 'categoria' | 'quantidade' | 'unidade' | 'local' | 'validade' | 'observacao'>;
+
+export type FiltroLista = 'todos' | 'vencendo' | 'vencidos';
+
+const agora = () => new Date().toISOString();
+
+export async function listarAtivos(db: SQLiteDatabase, filtro: FiltroLista, hoje: string, limite: string, busca = '') {
+  let where = `excluido = 0 AND status = 'ativo'`;
+  const params: (string | number)[] = [];
+  if (filtro === 'vencidos') {
+    where += ' AND validade < ?';
+    params.push(hoje);
+  } else if (filtro === 'vencendo') {
+    where += ' AND validade >= ? AND validade <= ?';
+    params.push(hoje, limite);
+  }
+  if (busca.trim()) {
+    where += ' AND nome LIKE ?';
+    params.push(`%${busca.trim()}%`);
+  }
+  return db.getAllAsync<Item>(`SELECT * FROM itens WHERE ${where} ORDER BY validade ASC, nome ASC`, params);
+}
+
+export function buscarItem(db: SQLiteDatabase, id: string) {
+  return db.getFirstAsync<Item>('SELECT * FROM itens WHERE id = ? AND excluido = 0', [id]);
+}
+
+export async function criarItem(db: SQLiteDatabase, e: ItemEntrada) {
+  const id = Crypto.randomUUID();
+  const t = agora();
+  await db.runAsync(
+    `INSERT INTO itens (id, nome, categoria, quantidade, unidade, local, validade, status, observacao, criado_em, atualizado_em, excluido, sincronizado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', ?, ?, ?, 0, 0)`,
+    [id, e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null, t, t],
+  );
+  return id;
+}
+
+export async function atualizarItem(db: SQLiteDatabase, id: string, e: ItemEntrada) {
+  await db.runAsync(
+    `UPDATE itens SET nome = ?, categoria = ?, quantidade = ?, unidade = ?, local = ?, validade = ?, observacao = ?,
+       atualizado_em = ?, sincronizado = 0 WHERE id = ?`,
+    [e.nome.trim(), e.categoria, e.quantidade, e.unidade, e.local, e.validade, e.observacao || null, agora(), id],
+  );
+}
+
+export async function mudarStatus(db: SQLiteDatabase, id: string, status: StatusItem) {
+  await db.runAsync('UPDATE itens SET status = ?, atualizado_em = ?, sincronizado = 0 WHERE id = ?', [status, agora(), id]);
+}
+
+/** Exclusão lógica: o registro fica marcado para que a exclusão também chegue ao Supabase. */
+export async function excluirItem(db: SQLiteDatabase, id: string) {
+  await db.runAsync('UPDATE itens SET excluido = 1, atualizado_em = ?, sincronizado = 0 WHERE id = ?', [agora(), id]);
+}
+
+export interface Resumo {
+  ativos: number;
+  vencidos: number;
+  vencendo: number;
+  consumidos: number;
+  descartados: number;
+  porLocal: { local: string; total: number }[];
+}
+
+export async function obterResumo(db: SQLiteDatabase, hoje: string, limite: string): Promise<Resumo> {
+  const r = await db.getFirstAsync<Omit<Resumo, 'porLocal'>>(
+    `SELECT
+       SUM(CASE WHEN status = 'ativo' THEN 1 ELSE 0 END) AS ativos,
+       SUM(CASE WHEN status = 'ativo' AND validade < ? THEN 1 ELSE 0 END) AS vencidos,
+       SUM(CASE WHEN status = 'ativo' AND validade >= ? AND validade <= ? THEN 1 ELSE 0 END) AS vencendo,
+       SUM(CASE WHEN status = 'consumido' THEN 1 ELSE 0 END) AS consumidos,
+       SUM(CASE WHEN status = 'descartado' THEN 1 ELSE 0 END) AS descartados
+     FROM itens WHERE excluido = 0`,
+    [hoje, hoje, limite],
+  );
+  const porLocal = await db.getAllAsync<{ local: string; total: number }>(
+    `SELECT local, COUNT(*) AS total FROM itens WHERE excluido = 0 AND status = 'ativo' GROUP BY local ORDER BY total DESC`,
+  );
+  return {
+    ativos: r?.ativos ?? 0,
+    vencidos: r?.vencidos ?? 0,
+    vencendo: r?.vencendo ?? 0,
+    consumidos: r?.consumidos ?? 0,
+    descartados: r?.descartados ?? 0,
+    porLocal,
+  };
+}
+
+export async function contarPendentes(db: SQLiteDatabase) {
+  const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM itens WHERE sincronizado = 0');
+  return r?.n ?? 0;
+}
+
+export async function lerMeta(db: SQLiteDatabase, chave: string) {
+  const r = await db.getFirstAsync<{ valor: string | null }>('SELECT valor FROM meta WHERE chave = ?', [chave]);
+  return r?.valor ?? null;
+}
+
+export async function gravarMeta(db: SQLiteDatabase, chave: string, valor: string | null) {
+  await db.runAsync('INSERT INTO meta (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor', [chave, valor]);
+}
+
+export type GrupoDetalhe = 'vencendo' | 'vencidos' | 'consumidos' | 'descartados';
+
+/** Lista usada na aba Detalhes: a vencer/vencidos (ativos) e o histórico de consumidos/descartados. */
+export function listarGrupo(db: SQLiteDatabase, grupo: GrupoDetalhe, hoje: string, limite: string) {
+  switch (grupo) {
+    case 'vencendo':
+      return db.getAllAsync<Item>(
+        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND validade >= ? AND validade <= ? ORDER BY validade, nome`,
+        [hoje, limite],
+      );
+    case 'vencidos':
+      return db.getAllAsync<Item>(
+        `SELECT * FROM itens WHERE excluido = 0 AND status = 'ativo' AND validade < ? ORDER BY validade, nome`,
+        [hoje],
+      );
+    case 'consumidos':
+    case 'descartados':
+      return db.getAllAsync<Item>(
+        `SELECT * FROM itens WHERE excluido = 0 AND status = ? ORDER BY atualizado_em DESC`,
+        [grupo === 'consumidos' ? 'consumido' : 'descartado'],
+      );
+  }
+}
