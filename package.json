@@ -38,7 +38,8 @@
     "build:web": "expo export --platform web && node scripts/preparar-netlify.js",
     "test:ocr": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-validade-ocr.mjs",
     "test:armazenamento": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-armazenamento.mjs",
-    "test": "npm run -s test:ocr && npm run -s test:armazenamento"
+    "test:nome": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-nome-produto.mjs",
+    "test": "npm run -s test:ocr && npm run -s test:armazenamento && npm run -s test:nome"
   },
   "private": true
 }

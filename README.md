@@ -46,10 +46,19 @@ que não está no app pode vencer esquecido. Agora a câmera faz esse trabalho e
   e por OCR.
 - Se o usuário corrigir a data à mão, `validade_origem` volta a ser `manual`. Isso permite medir a taxa de acerto do OCR.
 
+**Padrão do nome do produto.** A Open Food Facts costuma trazer o título de prateleira do mercado, longo e repetitivo
+("Margarina Cremosa Com Sal Qualy Pote 1kg Embalagem Econômica"). O app (`src/lib/nomeProduto.ts`) monta sempre na mesma ordem:
+
+> **Produto + tipo/sabor** · **Marca** · **Quantidade** → "Margarina Cremosa com Sal Qualy 1 kg"
+
+Para isso, ele tira embalagem (pacote, caixa, pote…), marketing ("Embalagem Econômica", "High Protein"), peso repetido e
+trechos entre parênteses. Também expande abreviações (BISC RECH CHOC → Biscoito Recheado Chocolate), põe a marca uma vez só,
+depois do produto, e limita a descrição a 6 palavras (no máximo 60 caracteres). O nome continua editável no formulário.
+
 **Por que OCR em nuvem (Edge Function)?** Reconhecimento de texto no próprio aparelho (ML Kit) exige build nativo e não roda no
 Expo Go. A Edge Function mantém a chave da API **fora do app**, exige usuário logado (JWT) e funciona igual no celular e na web.
 
-Testes: `npm test` (interpretador de datas com casos reais de embalagens + tabela de armazenamento).
+Testes: `npm test` (interpretador de datas com casos reais de embalagens, tabela de armazenamento e padrão de nome).
 
 ### Dica de armazenamento e prazo de aviso
 
@@ -159,6 +168,7 @@ src/
   lib/alertas.ts          # alert/confirm que funcionam também na web
   lib/visao.ts            # OCR (Edge Function) e busca de produto por código de barras
   lib/validadeOcr.ts      # interpreta o texto do OCR e encontra a validade
+  lib/nomeProduto.ts      # padroniza o nome vindo do código de barras (produto · marca · peso)
   lib/armazenamento.ts    # local, dica de conservação e prazo de aviso por alimento
   lib/notificacoes.ts     # agenda as notificações locais de vencimento
   components/AgendadorNotificacoes.tsx  # refaz a agenda quando os dados mudam
@@ -171,6 +181,7 @@ supabase/visao.sql        # migração do 2º bimestre (colunas da visão comput
 supabase/functions/ocr-validade/index.ts  # Edge Function de OCR
 scripts/testar-validade-ocr.mjs           # testes do interpretador de datas
 scripts/testar-armazenamento.mjs          # testes da tabela de armazenamento/prazos
+scripts/testar-nome-produto.mjs           # testes do padrão de nome dos produtos
 ```
 
 ### Modelo de dados

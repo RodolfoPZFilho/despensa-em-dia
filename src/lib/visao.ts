@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
+import { encurtarNomeProduto } from './nomeProduto';
 import { CATEGORIAS } from '@/db/itens';
 
 /* ------------------------------------------------------------------ */
@@ -88,7 +89,7 @@ export async function buscarProdutoPorCodigo(db: SQLiteDatabase, codigo: string)
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const campos = 'product_name,product_name_pt,brands,categories_tags,conservation_conditions_pt';
+    const campos = 'product_name,product_name_pt,brands,quantity,categories_tags,conservation_conditions_pt';
     const resp = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json?fields=${campos}`, {
       signal: ctrl.signal,
     });
@@ -96,12 +97,12 @@ export async function buscarProdutoPorCodigo(db: SQLiteDatabase, codigo: string)
     const json = await resp.json();
     const p = json?.product;
     if (json?.status !== 1 || !p) return null;
-    let nome: string = (p.product_name_pt || p.product_name || '').trim();
-    if (!nome) return null;
-    const marca = String(p.brands ?? '').split(',')[0].trim();
-    if (marca && !nome.toLowerCase().includes(marca.toLowerCase())) nome = `${nome} ${marca}`;
+    const bruto: string = (p.product_name_pt || p.product_name || '').trim();
+    if (!bruto) return null;
+    // Padrão do nome: Produto + tipo/sabor · Marca · Quantidade  (ex.: "Leite Condensado Integral Moça 395 g")
+    const nome = encurtarNomeProduto(bruto, p.brands, p.quantity);
     const conservacao = String(p.conservation_conditions_pt ?? '').trim() || undefined;
-    return { codigo, nome: nome.slice(0, 120), categoria: mapearCategoria(p.categories_tags), conservacao, origem: 'openfoodfacts' };
+    return { codigo, nome, categoria: mapearCategoria(p.categories_tags), conservacao, origem: 'openfoodfacts' };
   } catch {
     return null; // sem internet ou base fora do ar: o usuário digita o nome
   } finally {
