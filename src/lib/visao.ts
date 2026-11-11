@@ -32,8 +32,12 @@ export async function lerTextoDaFoto(foto: { uri: string; width: number; height:
   });
   if (error) {
     // Tenta mostrar a mensagem que a função devolveu
-    const detalhe = await (error as { context?: Response }).context?.json?.().catch(() => null);
-    throw new Error(detalhe?.erro ?? error.message);
+    const resp = (error as { context?: Response }).context;
+    const detalhe = await resp?.json?.().catch(() => null);
+    if (detalhe?.erro) throw new Error(detalhe.erro);
+    if (resp?.status === 404) throw new Error('A função "ocr-validade" não está publicada no Supabase (Edge Functions).');
+    if (resp?.status === 401) throw new Error('Sessão expirada ou função exigindo login: entre na conta de novo.');
+    throw new Error(detalhe?.message ?? error.message);
   }
   if (data?.erro) throw new Error(data.erro);
   return data?.texto ?? '';
