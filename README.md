@@ -53,7 +53,7 @@ Teste do interpretador de datas: `npm run test:ocr` (casos reais de embalagens).
 
 ## 4. Tecnologias obrigatórias
 
-- **React Native + Expo (SDK 57)** com **Expo Router** para navegação (Stack + Tabs + modal)
+- **React Native + Expo (SDK 58)** com **Expo Router** para navegação (Stack + Tabs + modal)
 - **Expo SQLite**: banco local `despensa.db`; o app funciona 100% offline
 - **Supabase (PostgreSQL)**: tabela `public.itens`, com autenticação por e-mail e Row Level Security
 - **Visão computacional**: `expo-camera` (leitura de código de barras), OCR.space (reconhecimento de texto) chamado por uma
@@ -128,7 +128,7 @@ scripts/testar-validade-ocr.mjs           # testes do interpretador de datas
 
 ## 6. Como rodar
 
-Pré-requisitos: **Node.js 20 LTS ou superior** e o app **Expo Go** no celular (Android ou iOS).
+Pré-requisitos: **Node.js 20 LTS ou superior** e o app **Expo Go** atualizado no celular (Android ou iOS). O Expo Go da loja só abre a SDK mais recente: se ele abrir e fechar na hora, o projeto precisa ser atualizado (`npx expo install expo@latest --fix`).
 
 ```bash
 npm install
