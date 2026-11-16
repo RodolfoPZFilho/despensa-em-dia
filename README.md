@@ -266,3 +266,8 @@ npm run build:web                 # gera a pasta dist/ pronta para o Netlify
 O `build:web` também renomeia `dist/assets/node_modules` para `dist/assets/nm`, porque o Netlify ignora pastas com esse nome. A pasta `dist/` pode ser publicada no Netlify: arraste-a em https://app.netlify.com/drop. Os arquivos
 `public/_headers` e `public/_redirects` já vão junto e ativam os cabeçalhos que o SQLite web exige
 (`Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy`).
+
+## Autores
+
+- João Vitor Dias Oliveira
+- Rodolfo Paturalski Zuculo Filho
